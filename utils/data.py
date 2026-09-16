@@ -14,131 +14,67 @@ DATA_DIR = "data"  # processed data and results of previous analyses
 FIGURES_DIR = "figures"
 
 
-def apply_scales(
-    dataset: xr.Dataset,
-    scales: xr.DataArray,
-    label: str | None = None,
-) -> xr.Dataset:
-    """Multiply simulation outputs by scaling factors
-
-    Args:
-        data: Dataset of simulation outputs
-        scales: DataArray of scaling factors
-
-    Returns:
-        A new Dataset containing scaled variables
-    """
-
-    # Check inputs
-    label = label or scales.attrs["label"]
-    if not label and not scales.attrs.get("label"):
-        raise ValueError("label must be provided or set as attribute of scales")
-    label = label or scales.attrs["label"]
-
-    # Scale emissions, concentration, and deposition
-    vars_to_scale = [
-        x
-        for x in [
-            "emission",
-            "concentration",
-            "total_deposition",
-            "dry_deposition",
-            "wet_loss",
-        ]
-        if x in dataset.data_vars
-    ]
-    with xr.set_options(keep_attrs=True):
-        scaled = dataset[vars_to_scale] * scales.drop_attrs()
-    for data in scaled.data_vars.values():
-        long_name = data.attrs["long_name"].removeprefix("Mean ")
-        data.attrs.update(long_name=f"Scaled {long_name.lower()}")
-
-    # Copy over any other variables e.g. area
-    for k, v in dataset.data_vars.items():
-        if k not in scaled:
-            scaled[k] = v
-
-    # Copy any attributes
-    scaled.attrs = dataset.attrs
-
-    # Describe and label
-    _, obs_label = scales.label.split("_")
-    scaled.attrs["description"] = " ".join(
-        [dataset.description, f"constrained by {obs_label} observations"]
-    )
-    scaled.attrs["label"] = label
-
-    return scaled
-
-
-def combine_land_sources(dataset: xr.Dataset) -> xr.Dataset:
-    """Sum data from all terrestrial sources into a single 'land' source
-
-    Args:
-        dataset: Dataset to process
-    """
-
-    source_vars = [x for x, data in dataset.data_vars.items() if "source" in data.dims]
-    land = (
-        dataset[source_vars]
-        .drop_sel(source="ocean")
-        .sum(dim="source", keep_attrs=True)
-        .expand_dims({"source": ["land"]})
-    )
-    merged = xr.concat(
-        [dataset.sel(source="ocean"), land], dim="source", data_vars="minimal"
-    ).transpose(*dataset.dims)
-
-    return merged
-
-
 def load_observations(
     filename: str, data_dir: str = DATA_DIR, label: str | None = None
 ) -> xr.Dataset:
     """Load processed observations as an xr.Dataset"""
 
-    # Infer observation type, units, and label from filename
-    file_label, obs_type = filename.removeprefix("obs_").removesuffix(".csv").split("_")
-    if obs_type not in ["concentration", "deposition"]:
-        raise ValueError(f"Could not infer observation type from '{filename}'")
-    units = {"concentration": "ug/m3", "deposition": "t/km2/yr"}
-    units = units[obs_type]
+    # Parse label from filename
+    file_label = filename.removeprefix("obs_").removesuffix(".csv").replace("_", "-")
     if not label:
         label = file_label
 
-    # Load and rename columns
+    # Load data
     path = os.path.join(data_dir, filename)
-    obs = pd.read_csv(path).rename(columns={units: obs_type})
+    obs = pd.read_csv(path)
 
     # Exclude observations with no microplastics
-    obs = obs.loc[obs[obs_type].gt(0)].reset_index(drop=True)
+    obs = obs.loc[obs["mass"].gt(0), :].reset_index(drop=True)
 
-    # Get size range units
+    # Check units
+    units = {}
+    for col in ["number", "mass"]:
+        units[col] = {}
+        for measure in ["concentration", "deposition"]:
+            obs_units = (
+                obs.loc[obs["measure"].eq(measure), f"{col}_units"].dropna().unique()
+            )
+            if len(obs_units) > 1:
+                raise ValueError(
+                    f"All {measure} observations must have same {col} units; got {obs_units}"
+                )
+            units[col][measure] = obs_units[0]
     size_units = obs["size_units"].dropna().unique()
     if len(size_units) > 1:
-        raise ValueError("Column 'size_units' contains multiple units: {size_units}")
+        raise ValueError(f"All observations must have same size units; got {size_units}")
     size_units = size_units[0]
 
     # Convert to xr.Dataset
     # fmt: off
     cols = [
-        "study", "doi", "lat", "lon", obs_type, "size_low", "size_high", "shape",
-        "setting"
+        "author", "year", "doi", "measure", "lat", "lon", "size_min", "size_max",
+        "number", "mass", "shape", "area"
     ]
     # fmt: on
-    obs = (
-        obs[cols]
-        .to_xarray()
-        .set_coords(["lat", "lon"])
-        .assign_attrs(description=f"Observed atmospheric microplastic {obs_type}")
-    )
+    cols = [x for x in cols if x in obs.columns]
+    obs = obs[cols].to_xarray().set_coords(["lat", "lon"])
+    for measure in ["concentration", "deposition"]:
+        mask = obs["measure"] == measure
+        for variable in ["number", "mass"]:
+            varname = f"{variable}_{measure}"
+            obs[varname] = xr.where(mask, obs[variable], None)
+            obs[varname].attrs.update(
+                long_name=f"{variable.title()} {measure} of microplastics",
+                units=units[variable][measure],
+            )
+    obs = obs.drop_vars(["measure", "number", "mass"])
 
     # Set attributes
-    obs[obs_type].attrs.update(long_name=f"Mass {obs_type}", units=units)
     obs["lat"].attrs.update(standard_name="latitude", units="degrees_north", axis="Y")
     obs["lon"].attrs.update(standard_name="longitude", units="degrees_east", axis="X")
-    obs["size_low"].attrs.update(long_name="Aerodynamic diameter", units=size_units)
-    obs["size_high"].attrs.update(long_name="Aerodynamic diameter", units=size_units)
+    obs["size_min"].attrs.update(long_name="Aerodynamic diameter", units=size_units)
+    obs["size_max"].attrs.update(long_name="Aerodynamic diameter", units=size_units)
+    obs.attrs["description"] = "Atmospheric microplastic observations"
     obs.attrs["label"] = label
 
     return obs

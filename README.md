@@ -22,7 +22,7 @@ micromamba activate hough2026_atmo-plast-emis_paper
 
 ### Get the data
 
-The size-harmonized observations are available at https://doi.org/10.5281/zenodo.21069346. Copy the `obs_size-harmonized_*.csv` files (in the `results/` directory) to the [data/](data/) directory.
+The size-harmonized observations are available at https://doi.org/10.5281/zenodo.21069346. Copy `obs_fu2023-size-harmonized.csv` (in the `results/` directory) to the [data/](data/) directory.
 
 The constrained simulation outputs are available at https://doi.org/10.5281/zenodo.20922804. Download these files to the [data](data/) directory.
 
@@ -34,8 +34,8 @@ The [data/](data/) directory tree should look like this:
 data/
 ├── MERRA2.20150101.CN.2x25.nc4
 ├── README.md
-├── obs_size-harmonized_concentration.csv
-├── obs_size-harmonized_deposition.csv
+├── obs_fu2023-revised.csv
+├── obs_fu2023-size-harmonized.csv
 ├── sim_alt_constrained.nc
 └── sim_main_constrained.nc
 ```
@@ -70,4 +70,4 @@ Functions used in the notebooks
 References
 ----------
 
-Hough, I., Angot, H., Price, R., Dobiasova, N., Segur, T., Jahangir, E., Zhang, Y., Voisin, D., Sonke, J.E., & Thomas, J.L. (2026) Reduced global atmospheric microplastic emissions from size-harmonized observations. TODO PAPER DOI
+Hough, I., Angot, H., Price, R., Dobiasova, N., Segur, T., Jahangir, E., Zhang, Y., Voisin, D., Sonke, J.E., & Thomas, J.L. (2026) Reduced global atmospheric microplastic emissions from size-harmonized observations.

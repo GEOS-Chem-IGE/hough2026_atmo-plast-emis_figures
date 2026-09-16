@@ -9,9 +9,9 @@ Contents
 
 `MERRA2.20150101.CN.2x25.nc4`: standard GEOS-Chem input file containing the `FROCEAN` constant (fraction of each model grid cell that is occupied by ocean). Downloaded from https://geos-chem.s3-us-west-2.amazonaws.com/GEOS_2x2.5/MERRA2/2015/01/MERRA2.20150101.CN.2x25.nc4.
 
-`obs_revised_*.csv`: revised observations of atmospheric microplastic conentration and deposition. The original observations were collected from the literature by Fu et al. (2023). We revised the observations adding study DOI and observed particle size range and ensuring lat/lon and microplastic particle counts correspond to the study-reported values. We then recomputed microplastic mass from the updated particle counts using @Fu2023's assumed fixed microplastic particle mass of 57 ng/particle over land and 100 ng/particle over oceans.
+`obs_fu2023-revised.csv`: revised observations of atmospheric microplastic conentration and deposition. The original observations were collected from the literature by Fu et al. (2023). We revised the observations adding study DOI and observed particle size range and ensuring lat/lon and microplastic particle counts correspond to the study-reported values. We then recomputed microplastic mass from the updated particle counts using @Fu2023's assumed fixed microplastic particle mass of 57 ng/particle over land and 100 ng/particle over oceans.
 
-`obs_size-harmonzied_*.csv`: size-harmonized atmospheric microplastic concentration and deposition observations.
+`obs_fu2023-size-harmonzied.csv`: size-harmonized atmospheric microplastic concentration and deposition observations.
 
 `sim_*_constrained.nc`: constrained outputs of the *main* and *alternate* simulations.
 
