@@ -10,28 +10,15 @@ import cf_xarray.units
 # isort: on
 
 import numpy as np
-from IPython.display import HTML
+import pandas as pd
 from matplotlib import colors
 from numpy.typing import ArrayLike
-from pandas import DataFrame
-from pandas.io.formats.style import Styler
 from pint import Quantity
 from pint.errors import DimensionalityError
 from pint_xarray import unit_registry as ureg
-from scipy import optimize
-
-# Molecular weight of dry air
-# https://github.com/geoschem/geos-chem/blob/14.1.1/Headers/physconstants.F90#L26
-AIR_MW = 28.9644 * ureg("g/mol")
 
 # Density of microplastic aerosols
 PLASTIC_DENSITY = 1 * ureg("g/cm3")
-
-# Molecular weight of microplastics
-PLASTIC_MW = 29 * ureg("g/mol")
-
-# Simulation tracer sizes (aerodynamic diameter [µm])
-PLASTIC_SIZES = [0.3, 2.5, 7, 15, 35, 70]
 
 # Shape factors for atmospheric microplastics
 # Multiplier to compute volume from cube of particle size
@@ -40,9 +27,6 @@ PLASTIC_SHAPE_FACTORS = {
     "fragments": np.pi / 6 * 0.68 * (0.4 * 0.68),  # l = 1; h = 0.68 l; w = 0.4 h
 }
 
-# Simulated atmospheric microplastic sources
-PLASTIC_SOURCES = ["ocean", "mmpw", "agricultural", "residential", "road"]
-
 # Colormap for plots
 WhBlYlRd = colors.ListedColormap(
     np.genfromtxt(os.path.join(os.path.dirname(__file__), "WhBlYlRd.txt")) / 255,
@@ -50,116 +34,150 @@ WhBlYlRd = colors.ListedColormap(
 )
 
 
-def clean_styler(x: DataFrame | Styler) -> HTML:
-    """Format a DataFrame as an HTML table without element IDs
-
-    The HTML table returned by DataFrame.style includes IDs for table elements which
-    change each time the table is generated, even if the table content is unchanged.
-    This function removes the IDs from the table to ensure the output only changes if
-    the table content changes.
-    """
-
-    # Get styled HTML string
-    if isinstance(x, DataFrame):
-        x = x.style
-    html = x.to_html()
-
-    # Remove cell IDs
-    html = re.sub(r" id=\"\w+\"", "", html)
-
-    # Remove cell classes
-    html = re.sub(r" class=\".+?\"", "", html)
-
-    # Remove whitespace
-    html = re.sub(r"&nbsp;<", "<", html)
-    html = re.sub(r" +>", ">", html)
-
-    return HTML(html)
-
-
-def convert_molec_to_mass(spec: xr.DataArray, spec_mw: Quantity) -> xr.DataArray:
-    """Convert molecules to mass e.g. molec/cm3 -> µg/m3
+def apply_scales(
+    dataset: xr.Dataset, scales: xr.DataArray, label: str | None = None
+) -> xr.Dataset:
+    """Multiply simulation outputs by scaling factors
 
     Args:
-        spec: Species with units including molecules e.g. molec/cm3, molec/cm2/s
-        spec_mw: Species molecular weight (g/mol)
+        data: Dataset of simulation outputs
+        scales: DataArray of scaling factors
 
     Returns:
-        xr.DataArray of species with quantity expressed as mass e.g. µg/m3, µg/m2/s
-
-    Conversion formula is:
-
-        molecules species    1 mol               µg species
-        ------------------ * ----------------- * -----------
-        [other units]        6.02e23 molecules   mol species
-
-        = quantity / Avogadro's number * species molecular weight
-
-        = µg species / [other units]
+        A new Dataset containing scaled variables
     """
 
-    # Quantify units
-    spec = spec.pint.quantify()
-    spec_mw = spec_mw.to("µg/mol")
+    # Check inputs
+    label = label or scales.attrs["label"]
+    if not label and not scales.attrs.get("label"):
+        raise ValueError("label must be provided or set as attribute of scales")
+    label = label or scales.attrs["label"]
 
-    # Check units
-    orig_units = spec.pint.units
-    if orig_units._units["particle"] != 1:
-        raise ValueError(f"spec_molec must have units 'particle / X'; got '{orig_units}'")
+    # Scale emissions, concentration, and deposition
+    vars_to_scale = [
+        x
+        for x in [
+            "emission",
+            "concentration",
+            "total_deposition",
+            "dry_deposition",
+            "wet_loss",
+        ]
+        if x in dataset.data_vars
+    ]
+    with xr.set_options(keep_attrs=True):
+        scaled = dataset[vars_to_scale] * scales.drop_attrs()
+    for data in scaled.data_vars.values():
+        long_name = data.attrs["long_name"].removeprefix("Mean ")
+        data.attrs.update(long_name=f"Scaled {long_name.lower()}")
 
-    # Convert
-    avogadro = ureg("particle") / ureg("particle").to("mol")
-    mass = spec * (1 / avogadro) * spec_mw
+    # Copy over any other variables e.g. area
+    for k, v in dataset.data_vars.items():
+        if k not in scaled:
+            scaled[k] = v
 
-    return mass
+    # Copy any attributes
+    scaled.attrs = dataset.attrs
+
+    # Describe and label
+    _, obs_label = scales.label.split("_")
+    scaled.attrs["description"] = " ".join(
+        [dataset.description, f"constrained by {obs_label} observations"]
+    )
+    scaled.attrs["label"] = label
+
+    return scaled
 
 
-def convert_vvdry_to_ugm3(
-    spec: xr.DataArray, spec_mw: Quantity, air_density: xr.DataArray
-) -> xr.DataArray:
-    """Convert molar fraction (mol/mol dry air) to (µg/m3)
+def combine_land_sources(dataset: xr.Dataset) -> xr.Dataset:
+    """Sum data from all terrestrial sources into a single 'land' source
 
     Args:
-        spec: Species with units of (mol/mol dry air)
-        spec_mw: Species molecular weight (g/mol)
-        air_density: Dry air density (kg/m3). Must be broadcastable with spec.
-
-    Returns:
-        xr.DataArray of species concentration (µg/m3)
-
-    Based on gcpy's convert_to_ugm3 routine:
-    https://github.com/geoschem/gcpy/blob/1.6.2/gcpy/plot/compare_single_level.py#L443-L446
-
-    The conversion formula is:
-
-        mol species   g/mol species   µg dry air
-        ----------- * ------------- * ----------
-        mol dry air   g/mol dry air   m3
-
-        = volume mixing ratio * (MW species / MW dry air) * dry air density
-
-        = µg species / m3
+        dataset: Dataset to process
     """
 
-    # Quantify units
-    # * pint doesn't undersand "mol-1 dry air" so use "mol mol-1"
-    # * pint doesn't know that dimension "lev" with unit "level" is unitless
-    spec = spec.assign_attrs(
-        units=spec.attrs["units"].replace("mol mol-1 dry", "mol mol-1")
-    ).pint.quantify({"lev": None})
-    air_density = air_density.pint.quantify({"lev": None}).pint.to("µg/m3")
-    spec_mw = spec_mw.to("g/mol")
+    source_vars = [x for x, data in dataset.data_vars.items() if "source" in data.dims]
+    land = (
+        dataset[source_vars]
+        .drop_sel(source="ocean")
+        .sum(dim="source", keep_attrs=True)
+        .expand_dims({"source": ["land"]})
+    )
+    merged = xr.concat(
+        [dataset.sel(source="ocean"), land], dim="source", data_vars="minimal"
+    ).transpose(*dataset.dims)
 
-    # Convert vv to µg/m3
-    spec_conc = spec * (spec_mw / AIR_MW) * air_density
-
-    return spec_conc
+    return merged
 
 
 def format_units_mpl(x: str) -> str:
     """Format units for display on matplotlib plots"""
 
     return re.sub(r"(-?\d+)", r"$^{\1}$", x)
+
+
+def load_observations(path: str, label: str | None = None) -> xr.Dataset:
+    """Load processed observations as an xr.Dataset"""
+
+    # Parse label from filename
+    filename = os.path.basename(path)
+    file_label = filename.removeprefix("obs_").removesuffix(".csv").replace("_", "-")
+    if not label:
+        label = file_label
+
+    # Load data
+    obs = pd.read_csv(path)
+
+    # Exclude observations with no microplastics
+    obs = obs.loc[obs["mass"].gt(0), :].reset_index(drop=True)
+
+    # Check units
+    units = {}
+    for col in ["number", "mass"]:
+        units[col] = {}
+        for measure in ["concentration", "deposition"]:
+            obs_units = (
+                obs.loc[obs["measure"].eq(measure), f"{col}_units"].dropna().unique()
+            )
+            if len(obs_units) > 1:
+                raise ValueError(
+                    f"All {measure} observations must have same {col} units; got {obs_units}"
+                )
+            units[col][measure] = obs_units[0]
+    size_units = obs["size_units"].dropna().unique()
+    if len(size_units) > 1:
+        raise ValueError(f"All observations must have same size units; got {size_units}")
+    size_units = size_units[0]
+
+    # Convert to xr.Dataset
+    # fmt: off
+    cols = [
+        "author", "year", "doi", "measure", "lat", "lon", "size_min", "size_max",
+        "number", "mass", "shape", "area"
+    ]
+    # fmt: on
+    cols = [x for x in cols if x in obs.columns]
+    obs = obs[cols].to_xarray().set_coords(["lat", "lon"])
+    for measure in ["concentration", "deposition"]:
+        mask = obs["measure"] == measure
+        for variable in ["number", "mass"]:
+            varname = f"{variable}_{measure}"
+            obs[varname] = xr.where(mask, obs[variable], None)
+            obs[varname].attrs.update(
+                long_name=f"{variable.title()} {measure} of microplastics",
+                units=units[variable][measure],
+            )
+    obs = obs.drop_vars(["measure", "number", "mass"])
+
+    # Set attributes
+    obs["lat"].attrs.update(standard_name="latitude", units="degrees_north", axis="Y")
+    obs["lon"].attrs.update(standard_name="longitude", units="degrees_east", axis="X")
+    obs["size_min"].attrs.update(long_name="Aerodynamic diameter", units=size_units)
+    obs["size_max"].attrs.update(long_name="Aerodynamic diameter", units=size_units)
+    obs.attrs["description"] = "Atmospheric microplastic observations"
+    obs.attrs["label"] = label
+
+    return obs
 
 
 def mass_to_particles(
@@ -238,109 +256,6 @@ def particles_to_mass(
         mass = mass.pint.dequantify().rename(particles.name)
 
     return mass
-
-
-def powerlaw_compute_bin_edges(
-    xmin: float, vol_mean_sizes: list[float], alpha: float, figs: int | None = None
-) -> list[float]:
-    """
-    Compute size bin edges assuming a power law size distribution
-
-    Args:
-        xmin: Minimum size (lower edge of first bin)
-        vol_mean_sizes: Volume mean size of each bin
-        alpha: Power law parameter alpha, the exponent (must be > 1)
-        figs: Round bin edges to figs signficant figures (default: no rounding)
-
-    Both xmin and alpha must have size 1.
-
-    Returns:
-        Edges of the size bins
-
-    Derivation:
-                 n(x) = C * x^-alpha
-        N(xmin, xmax) = Integral[C * x^-alpha] dx
-                      = C / (1 - alpha) * (xmax^(1 - alpha) - xmin^(1 - alpha))
-                 v(x) = k * x^3
-        V(xmin, xmax) = Integral[v(x) * n(x)] dx
-                      = Integral[k * C * x^(3 - alpha)] dx
-                      = k * C / (4 - alpha) * (xmax^(4 - alpha) - xmin^(4 - alpha))
-               v(x_v) = V(xmin, xmax) / N(xmin, xmax)
-            k * x_v^3 = k * (1 - alpha) / (4 - alpha)
-                          * (xmax^(4 - alpha) - xmin^(4 - alpha))
-                          / (xmax^(1 - alpha) - xmin^(1 - alpha))
-                  x_v = [(1 - alpha) / (4 - alpha)
-                          * (xmax^(4 - alpha) - xmin^(4 - alpha))
-                          / (xmax^(1 - alpha) - xmin^(1 - alpha))]^(1/3)
-    """
-
-    alpha = float(alpha)  # numpy disallows negative integer powers
-    if alpha <= 1:
-        raise ValueError(f"alpha must be > 1; got {alpha}")
-    if alpha >= 4:
-        raise ValueError(f"alpha must be < 4; got {alpha}")
-
-    def compute_upper_edge(x1: float) -> float:
-        vol_mean = exp1 / exp4 * (x1**exp4 - x0**exp4) / (x1**exp1 - x0**exp1)
-        return vol_mean - vol_mean_sizes[i] ** 3
-
-    # Solve for bin upper edges using numerical root-finding
-    edges = [xmin]
-    exp1 = 1 - alpha
-    exp4 = 4 - alpha
-    for i in range(len(vol_mean_sizes)):
-        x0 = edges[-1]  # lower edge of bin
-        sol = optimize.root(compute_upper_edge, x0 + 1)  # initial guess = x0 + 1
-        x1 = sol.x
-        if figs:
-            # round to figs significant figures
-            mags = 10 ** (figs - 1 - np.floor(np.log10(x1)))
-            x1 = np.round(x1 * mags) / mags
-        edges = edges + x1.tolist()
-
-    return edges
-
-
-def powerlaw_compute_c(
-    n: Quantity, xmin: Quantity, xmax: Quantity, alpha: float | ArrayLike
-) -> Quantity:
-    """Compute power law parameter C
-
-    Power law number size distribution:
-        n(x) = C * x^-alpha
-
-    Args:
-        n: Number of particles in size range
-        xmin, xmax: Size range bounds
-        alpha: Power law parameter alpha, the exponent (must be > 1)
-
-    All arguments must have size 1 or n.
-
-    Returns:
-        Value(s) of C
-
-    Derivation:
-                 n(x) = C * x^-alpha
-        N(xmin, xmax) = Integral[C * x^-alpha] dx
-                      = C / (1 - alpha) * [xmax^(1 - alpha) - xmin^(1 - alpha)]
-                    C = N * (1 - alpha) / [xmax^(1 - alpha) - xmin^(1 - alpha)]
-    """
-
-    alpha = np.asarray(alpha).astype(float)  # numpy disallows negative integer powers
-    if np.any(alpha <= 1):
-        raise ValueError(f"alpha must be > 1; got {alpha}")
-
-    exp = 1 - alpha
-    try:
-        x_diff = xmax**exp - xmin**exp
-    except DimensionalityError as exc:
-        raise ValueError(
-            "Cannot raise a Quantity to an array exponent. Use a single value for alpha"
-            "or remove the units from xmin and xmax.",
-        ) from exc
-    scale = n * exp / x_diff
-
-    return scale
 
 
 def powerlaw_compute_mass(
@@ -439,3 +354,74 @@ def powerlaw_compute_number(
     number = c / exp * x_diff
 
     return number
+
+
+def spatial_integrate(
+    dataset: xr.Dataset,
+    varname: str,
+    units: str | None = None,
+    sum_dims: list[str] | str | None = None,
+) -> xr.DataArray:
+    """Multiply a variable by cell area and sum over all grid cells
+
+    Args:
+        data: Dataset with variable to integrate
+        varname: Name of variable to integrate
+        units: Optional units for output
+        sum_dims: Optional dimensions to sum over in addition to [lat, lon]
+    """
+
+    # Check inputs
+    varnames = [
+        "emission",
+        "concentration",
+        "total_deposition",
+        "dry_deposition",
+        "wet_loss",
+    ]
+    if varname not in varnames:
+        raise ValueError(f"Unrecognized varname: '{varname}'. Must be one of {varnames}")
+    if varname == "concentration":
+        if "air_volume" not in dataset.data_vars:
+            raise ValueError(
+                "data must have variable 'air_volume' to compute atmospheric burden"
+            )
+    elif "area" not in dataset.data_vars:
+        raise ValueError(f"data must have variable 'area' to compute global {varname}")
+
+    # Set target units
+    if units is None:
+        units = "Gg" if varname == "concentration" else "Gg/year"
+
+    # Set dimensions over which to sum
+    if sum_dims is None:
+        sum_dims = []
+    elif isinstance(sum_dims, str):
+        sum_dims = [sum_dims]
+    sum_dims = sum_dims + ["lat", "lon"]
+    if varname == "concentration":
+        sum_dims = sum_dims + ["lev"]
+
+    # Multiply by cell area and sum
+    if varname == "concentration":
+        integrated = (
+            (dataset[varname].pint.quantify() * dataset["air_volume"].pint.quantify())
+            .sum(dim=sum_dims)
+            .rename("burden")
+        )
+    else:
+        integrated = (
+            (dataset[varname].pint.quantify() * dataset["area"].pint.quantify())
+            .sum(dim=sum_dims)
+            .rename(varname)
+        )
+
+    # Convert units
+    integrated = integrated.pint.to(units).pint.dequantify("cf")
+
+    # Assign dataset label, if any
+    label = dataset.attrs.get("label")
+    if label:
+        integrated.attrs["label"] = label
+
+    return integrated

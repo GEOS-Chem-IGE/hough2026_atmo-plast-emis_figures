@@ -1,22 +1,39 @@
 Data
 ====
 
-This directory exists to hold the observations and constrained simulation outputs needed to produce the figures. You can download these data from https://doi.org/10.5281/zenodo.20922804 or recreate them by running the code at https://doi.org/10.5281/zenodo.21069346.
+This directory exists to hold the size-harmonized observations and constrained simulation outputs needed to produce the figures.
+
+The data are archived at https://doi.org/10.5281/zenodo.22946011
 
 
 Contents
 --------
 
-`MERRA2.20150101.CN.2x25.nc4`: standard GEOS-Chem input file containing the `FROCEAN` constant (fraction of each model grid cell that is occupied by ocean). Downloaded from https://geos-chem.s3-us-west-2.amazonaws.com/GEOS_2x2.5/MERRA2/2015/01/MERRA2.20150101.CN.2x25.nc4.
+[sensitivity/](sensitivity/): artifacts of analyses evaluating how sensitive our results are to the slope of the atmospheric microplastic particle size distribution and to the observations used to constrain simulated emissions.
 
-`obs_revised_*.csv`: revised observations of atmospheric microplastic conentration and deposition. The original observations were collected from the literature by Fu et al. (2023). We revised the observations adding study DOI and observed particle size range and ensuring lat/lon and microplastic particle counts correspond to the study-reported values. We then recomputed microplastic mass from the updated particle counts using @Fu2023's assumed fixed microplastic particle mass of 57 ng/particle over land and 100 ng/particle over oceans.
+- `obs_evangelou2026-size-harmonized_*.csv`: revised observational dataset of Evangelou et al. (2026) size-harmonized assuming varying observed size ranges.
+- `obs_fu2023-size-harmonized_alpha{+|-}1sd.csv`: revised observational dataset of Fu et al. (2023) size harmonized using an alternate PSD slope (plus/minus one standard deviation).
+- `scales_evangelou2026_*.nc`: optimized scaling factors that adjust the postprocessed raw outputs of the *main* simulation to match the size-harmonized revised observations of Evangelou et al. (2026).
+- `scales_fu2023_alpha{+|-}1sd.nc`: optimized scaling factors that adjust the postprocessed raw outputs of the *main* simulation to match the alternate PSD slope size-harmonized revised observations of Fu et al. (2023).
+- `trace_evangelou2026_*.nc`: trace of the scale optimization loop for the *main* simulation constrained by Evangelou et al. (2026) observations.
+- `trace_fu2023_alpha{+|-}1sd.nc`: trace of the scale optimization loop for the *main* simulation constrained by alternate PSD slope Fu et al. (2023) observations.
 
-`obs_size-harmonzied_*.csv`: size-harmonized atmospheric microplastic concentration and deposition observations.
+`obs_fu2023-revised.csv`: observational dataset of Fu et al. (2023), revised to ensure lat/lon and microplastic particle counts (`particle/m3` or `particle/m2/d`) correspond to the study-reported values. Microplastic mass (`ug/m3` or `t/km2/yr`) was recomputed from the updated particle counts assuming a fixed microplastic particle mass of 57 ng/particle over land and 100 ng/particle over oceans.
 
-`sim_*_constrained.nc`: constrained outputs of the *main* and *alternate* simulations.
+`obs_fu2023-size-harmonzied.csv`: revised observational dataset of Fu et al. (2023) size-harmonized to the 0.1-100 µm particle size range. All observations were assumed to have a power law particle number size distribution with $\alpha$ = -2.7 (i.e. the log-log slope of the particle number size distribution is -2.7). Mass was computed assuming ellipsoidal particles with length = size, width = 0.68 length, height = 0.4 width, and density 1 g/cm3.
+
+`scales_{alt|main}.nc`: optimized scaling factors that adjust the postprocessed raw outputs of the *main* and *alternate* simulations to match observations. The *main* simulation is constrained by size-harmonized observations while the *alternate* simulation is constrained by unharmonized observations.
+
+`sim_{alt|main}.nc`: postprocessed raw outputs of the *main* and *alternate* simulations (time-averaged over 2018-2020).
+
+`sim_{alt|main}_constrained.nc`: constrained outputs of the *main* and *alternate* simulations obtained by multiplying the postprocessed raw outputs by the optimized scaling factors.
+
+`trace_{alt|main}.pkl`: trace of the scale optimization loop for the *main* and *alternate* simulations.
 
 
 References
 ----------
+
+Evangelou, I., Bucci, S., & Stohl, A. (2026). Atmospheric microplastic emissions from land and ocean. *Nature*, *649*(8099), 1186–1189. https://doi.org/10.1038/s41586-025-09998-6
 
 Fu, Y., Pang, Q., Ga, S. L. Z., Wu, P., Wang, Y., Mao, M., Yuan, Z., Xu, X., Liu, K., Wang, X., Li, D., & Zhang, Y. (2023). Modeling atmospheric microplastic cycle by GEOS-Chem: An optimized estimation by a global dataset suggests likely 50 times lower ocean emissions. *One Earth*, *6*(6), 705–714. https://doi.org/10.1016/j.oneear.2023.05.012
