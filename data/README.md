@@ -1,7 +1,7 @@
 Data
 ====
 
-This directory exists to hold the observations and constrained simulation outputs needed to produce the figures. You can download these data from https://doi.org/10.5281/zenodo.22946011 or recreate them by running the code at https://doi.org/10.5281/zenodo.22947485.
+This directory exists to hold the observations and constrained simulation outputs needed to produce the figures. You can download the archived data from https://doi.org/10.5281/zenodo.22946011.
 
 
 Contents
