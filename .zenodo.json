@@ -33,6 +33,11 @@
       "resource_type": "publication"
     },
     {
+      "identifier": "https://github.com/GEOS-Chem-IGE/hough2026_atmo-plast-emis_figures/tree/1.0.1",
+      "relation": "isDerivedFrom",
+      "resource_type": "software"
+    },
+    {
       "identifier": "https://doi.org/10.5281/zenodo.22946011",
       "relation": "requires",
       "resource_type": "dataset"
