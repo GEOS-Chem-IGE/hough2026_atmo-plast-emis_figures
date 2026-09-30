@@ -1,7 +1,7 @@
 Figures for "Reduced global atmospheric microplastic emissions from size-harmonized observations" (Hough et al., 2026)
 ======================================================================================================================
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.TODO.svg)](https://doi.org/10.5281/zenodo.TODO)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23056070.svg)](https://doi.org/10.5281/zenodo.23056070)
 
 This repository contains code to produce the figures for the paper "Reduced global atmospheric microplastic emissions from size-harmonized observations" (Hough et al., 2026).
 
