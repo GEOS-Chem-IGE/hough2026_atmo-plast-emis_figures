@@ -1,24 +1,13 @@
-Paper figures
-=============
+Figures for "Reduced global atmospheric microplastic emissions from size-harmonized observations" (Hough et al., 2026)
+======================================================================================================================
 
-[![DOI](https://zenodo.org/badge/1277829106.svg)](https://zenodo.org/badge/latestdoi/1277829106)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.TODO.svg)](https://doi.org/10.5281/zenodo.TODO)
 
 This repository contains code to produce the figures for the paper "Reduced global atmospheric microplastic emissions from size-harmonized observations" (Hough et al., 2026).
-
-The final figures are in [figures/](figures/)
 
 
 To reproduce
 ------------
-
-### Create and activate the environment
-
-You will need [micromamba](https://mamba.readthedocs.io/en/latest/installation/micromamba-installation.html) and [conda-lock](https://conda.github.io/conda-lock/) to create the environment. You may also use [mamba](https://mamba.readthedocs.io/en/latest/installation/mamba-installation.html) or [conda](https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html) instead of micromamba.
-
-```bash
-conda-lock install --micromamba -n hough2026_atmo-plast-emis_harmonize
-micromamba activate hough2026_atmo-plast-emis_paper
-```
 
 ### Get the data
 
@@ -51,31 +40,18 @@ data/
 └── sim_main.nc
 ```
 
-Alternatively, you can reproduce these data by running the code at https://doi.org/10.5281/zenodo.21069346.
+### Create and activate the environment
+
+You will need [micromamba](https://mamba.readthedocs.io/en/latest/installation/micromamba-installation.html) and [conda-lock](https://conda.github.io/conda-lock/) to create the environment. You may also use [mamba](https://mamba.readthedocs.io/en/latest/installation/mamba-installation.html) or [conda](https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html) instead of micromamba.
+
+```bash
+conda-lock install --micromamba -n hough2026_atmo-plast-emis_harmonize
+micromamba activate hough2026_atmo-plast-emis_paper
+```
 
 ### Run the notebook
 
 Run [figures.ipynb](notebooks/figures.ipynb) to produce the paper figures.
-
-
-Contents
---------
-
-### [data/](data/)
-
-Data to produce the figures
-
-### [figures/](figures/)
-
-The figures produced by the notebooks
-
-### [notebooks/](notebooks/)
-
-Notebooks to produce figures
-
-### [utils/](utils/)
-
-Functions used in the notebooks
 
 
 References

@@ -3,7 +3,7 @@
 # Note: use environment.lock to **exactly** reproduce the environment
 #===============================================================================
 
-name: hough2026_atmo-plast-emis_paper
+name: hough2026_atmo-plast-emis_figures
 channels:
   - conda-forge
 dependencies:
